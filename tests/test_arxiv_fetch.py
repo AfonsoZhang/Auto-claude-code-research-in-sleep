@@ -167,7 +167,7 @@ def test_search_raises_after_three_rate_exceeded_bodies(monkeypatch):
 
 
 def test_search_retries_on_http_406_then_succeeds(monkeypatch):
-    """arXiv signals its rate limit with 406 Not Acceptable as well as 429."""
+    """export.arxiv.org returns 406 intermittently; it must not be permanent."""
     mod = load_module()
     err_406 = urllib.error.HTTPError(
         url="http://example/", code=406, msg="Not Acceptable",

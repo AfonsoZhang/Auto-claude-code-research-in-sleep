@@ -1,9 +1,9 @@
-"""Tests for tools/verify_papers.py arXiv rate-limit handling.
+"""Tests for tools/verify_papers.py transient-failure handling.
 
-arXiv answers its rate limit with 406 Not Acceptable as well as 429, while a
-missing ID is a plain 200 with zero results. Classifying 406 as a permanent 4xx
-made `_verify_arxiv_batch_with_retry` mark every ID in the batch — including
-papers that really exist — as "unverified", i.e. a false fabrication signal.
+export.arxiv.org returns 406 Not Acceptable intermittently, while a missing ID
+is a plain 200 with zero results. Classifying 406 as a permanent 4xx made
+`_verify_arxiv_batch_with_retry` mark every ID in the batch — including papers
+that really exist — as "unverified", i.e. a false fabrication signal.
 """
 
 import importlib.util
@@ -53,7 +53,7 @@ def _patch_http_get(monkeypatch, mod, responses):
 def test_is_transient_covers_arxiv_rate_limit_codes():
     mod = load_module()
 
-    assert mod.is_transient(406)  # arXiv's rate-limit answer
+    assert mod.is_transient(406)  # intermittent on export.arxiv.org
     assert mod.is_transient(408)
     assert mod.is_transient(429)
     assert mod.is_transient(503)
