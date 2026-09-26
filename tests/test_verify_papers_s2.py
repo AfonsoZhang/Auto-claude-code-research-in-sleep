@@ -91,10 +91,21 @@ def test_s2_paces_successive_calls(monkeypatch):
     assert slept and slept[-1] >= mod.S2_MIN_INTERVAL_SEC - 0.1 - 1e-9
 
 
-def test_s2_429_is_pending_not_unverified(monkeypatch):
-    """Rate limiting must not be reported as "this paper does not exist"."""
+def test_s2_retries_a_429_then_verifies(monkeypatch):
+    """A 429 is the expected answer under a 1 req/s ceiling, not a verdict."""
     mod = load_module()
-    _patch_http_get(monkeypatch, mod, [(429, None), (429, None)])
+    _patch_http_get(monkeypatch, mod, [(429, None), (200, S2_HIT)])
+
+    status, ids = mod.verify_title_s2("Attention Is All You Need", 0.7)
+
+    assert status == "verified"
+    assert ids["arxiv_id"] == REAL_ID
+
+
+def test_s2_persistent_429_is_pending_not_unverified(monkeypatch):
+    """Rate limiting must never be reported as "this paper does not exist"."""
+    mod = load_module()
+    _patch_http_get(monkeypatch, mod, [(429, None)] * 3)
 
     status, ids = mod.verify_title_s2("Attention Is All You Need", 0.7)
 
