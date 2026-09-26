@@ -106,6 +106,11 @@ from typing import Any
 ARXIV_API = "https://export.arxiv.org/api/query"
 CROSSREF_API = "https://api.crossref.org/works"
 S2_API = "https://api.semanticscholar.org/graph/v1/paper/search"
+# Semantic Scholar's documented limit for an issued key is 1 request/second,
+# cumulative across all endpoints; unauthenticated callers share one pool and get
+# 429 under any load. Pace ourselves and send the key when the env var is set.
+S2_MIN_INTERVAL_SEC = 1.05
+_s2_last_call = 0.0
 
 DEFAULT_BATCH_SIZE = 40
 DEFAULT_FUZZY_THRESHOLD = 0.6
@@ -312,6 +317,21 @@ def verify_doi(doi: str, user_email: str) -> str:
 # Layer 3: Semantic Scholar fuzzy title match
 # ──────────────────────────────────────────────────────────────────────────
 
+def _s2_headers() -> dict[str, str]:
+    """Send the API key when SEMANTIC_SCHOLAR_API_KEY is set; anonymous otherwise."""
+    key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "").strip()
+    return {"x-api-key": key} if key else {}
+
+
+def _s2_throttle() -> None:
+    """Keep successive S2 calls at least S2_MIN_INTERVAL_SEC apart."""
+    global _s2_last_call
+    wait = S2_MIN_INTERVAL_SEC - (time.monotonic() - _s2_last_call)
+    if wait > 0:
+        time.sleep(wait)
+    _s2_last_call = time.monotonic()
+
+
 def verify_title_s2(title: str, fuzzy_threshold: float) -> tuple[str, dict[str, str] | None]:
     """Return (status, identifiers_dict_or_None)."""
     normalized = normalize_title(title)
@@ -320,7 +340,8 @@ def verify_title_s2(title: str, fuzzy_threshold: float) -> tuple[str, dict[str, 
     q = urllib.parse.quote(normalized[:200])
     url = f"{S2_API}?query={q}&limit=3&fields=title,year,externalIds"
     for attempt in range(2):
-        status, body = http_get(url, timeout=15)
+        _s2_throttle()
+        status, body = http_get(url, headers=_s2_headers(), timeout=15)
         if status == 200 and body is not None:
             try:
                 data = json.loads(body)
